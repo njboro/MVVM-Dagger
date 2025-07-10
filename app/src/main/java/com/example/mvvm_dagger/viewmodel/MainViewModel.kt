@@ -13,7 +13,8 @@ import javax.inject.Inject
 * viewModel needs repository class object to access the data from the model.
 * so we are passing that in the constructor itself
 * */
-class MainViewModel(private val repository: CountryRepository) : ViewModel() {
+class MainViewModel @Inject constructor(private val repository: CountryRepository,
+    private val testForMultiBinding: TestForMultiBinding) : ViewModel() {
 
     val countriesLiveData : LiveData<List<Country>>
         get() = repository.countries
