@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MVVM-Dagger"
 include(":app")
- 
+include(":app-mvvm-compose")
