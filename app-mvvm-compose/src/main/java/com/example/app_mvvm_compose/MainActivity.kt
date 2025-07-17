@@ -1,9 +1,13 @@
 package com.example.app_mvvm_compose
 
+import android.app.Activity
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,37 +21,51 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
 import com.example.app_mvvm_compose.model.Desh
 import com.example.app_mvvm_compose.ui.theme.MVVMDaggerTheme
 import com.example.app_mvvm_compose.ui.theme.SubTitle_TextColor
 import com.example.app_mvvm_compose.ui.theme.Title_TextColor
+import com.example.app_mvvm_compose.utils.DetailScreen
+import com.example.app_mvvm_compose.utils.MyAppBar
 import com.example.app_mvvm_compose.utils.getDummyList
 import com.example.app_mvvm_compose.viewmodel.AppViewModel
 import com.example.app_mvvm_compose.viewmodel.MainViewModel
 import com.example.app_mvvm_compose.viewmodel.UIState
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import com.google.gson.Gson
 import dagger.hilt.android.AndroidEntryPoint
-import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -56,19 +74,25 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var mainViewModel: MainViewModel
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             MVVMDaggerTheme {
-                /*Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding),
-                        mainViewModel
-                    )
-                }*/
-                SwipeToRefreshComposable()
+                val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+                Scaffold(
+                    topBar = {
+                        MyAppBar("List of Countries", scrollBehavior = scrollBehavior) {
+                            finish()
+                        }
+                    },
+                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                ) {
+                    innerPadding ->
+                    SwipeToRefreshComposable(modifier = Modifier.padding(innerPadding))
+                }
+
             }
         }
     }
@@ -77,37 +101,83 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun GreetingPreview() {
         MVVMDaggerTheme {
-            //Greeting("Android")
             val countryList = getDummyList()
             //ListItemComposable("India", "New Delhi", "")
-            MyListsComposable(countryList)
+            //MyListsComposable(countryList)
+            DetailScreen(getDummyList()[0])
         }
     }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier, mainViewModel: MainViewModel) {
-    //ListItemComposable("India", "New Delhi", "")
-    MyListsComposable(getDummyList())
 }
 
 
 @Composable
 fun MyListsComposable(listCountry: List<Desh>) {
 
-    LazyColumn(
-        contentPadding = PaddingValues(5.dp),
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+    val navController = rememberNavController()
+    NavHost(
+        navController = navController, startDestination = "home"
     ) {
-        items(items = listCountry) { country ->
-            ListItemComposable(
-                countryName = country.countryName,
-                capital = country.capital,
-                imageUrl = country.flag
-            )
+        composable("home") {
+            LazyColumn(
+                contentPadding = PaddingValues(5.dp),
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+
+                items(items = listCountry) { country ->
+                    ListItemComposable(
+                        countryName = country.countryName,
+                        capital = country.capital,
+                        imageUrl = country.flag
+                    ) {
+                        val country = Uri.encode(Gson().toJson(country)) // Encode to pass safely in route
+                        navController.navigate("details/$country")
+                    }
+                }
+            }
+        }
+
+        composable ("details/{country}"){
+            backStackEntry ->
+            val countryJson = backStackEntry.arguments?.getString("country")
+            val country = Gson().fromJson(countryJson, Desh::class.java)
+
+            DetailScreen(country)
         }
     }
+
+    val currentContext = LocalContext.current
+    var showDialog by remember { mutableStateOf(false) }
+    //Intercept Back press
+    BackHandler(enabled = true) {
+        showDialog = true
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = {showDialog = false},
+            title = { Text("Exit App")},
+            text = { Text("Are you sure you want to exit?")},
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    //Actually exit the app
+                    (currentContext as? Activity)?.finish()
+                }) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                }) {
+                    Text("No")
+                }
+            }
+        )
+    }
+
+
 }
 
 @Composable
@@ -136,7 +206,7 @@ fun ErrorMessageComposable(errorMessage : String, onClick : () -> Unit ) {
 }
 
 @Composable
-fun SwipeToRefreshComposable(viewModel: AppViewModel = hiltViewModel()) {
+fun SwipeToRefreshComposable(viewModel: AppViewModel = hiltViewModel(), modifier: Modifier) {
 
     val uiState by viewModel.uiState.collectAsState()
 
@@ -146,7 +216,8 @@ fun SwipeToRefreshComposable(viewModel: AppViewModel = hiltViewModel()) {
         state = rememberSwipeRefreshState(isRefreshing),
         onRefresh = {
             viewModel.loadCountries()
-        }
+        },
+        modifier = modifier
     ) {
         when(uiState) {
             is UIState.Loading -> {
@@ -168,11 +239,14 @@ fun SwipeToRefreshComposable(viewModel: AppViewModel = hiltViewModel()) {
 }
 
 @Composable
-fun ListItemComposable(countryName: String, capital: String?, imageUrl: String?) {
+fun ListItemComposable(countryName: String, capital: String?, imageUrl: String?, onClick: () -> Unit) {
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.elevatedCardElevation(10.dp)
+        modifier = Modifier.fillMaxWidth().clickable {
+            onClick.invoke()
+        },
+        elevation = CardDefaults.elevatedCardElevation(5.dp),
+        shape = RoundedCornerShape(4.dp)
     ) {
         Row(
             horizontalArrangement = Arrangement.Start,
@@ -181,21 +255,7 @@ fun ListItemComposable(countryName: String, capital: String?, imageUrl: String?)
                 .padding(5.dp)
                 .fillMaxWidth()
         ) {
-
-            /*Image(
-                painter = painterResource(R.drawable.indian_flag),
-                contentDescription = "Image of Flag",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(
-                        width = 100.dp,
-                        height = 80.dp
-                    )
-                    .padding(5.dp)
-            )*/
-
             MyCoilImage(imageUrl)
-
             Column(verticalArrangement = Arrangement.Center) {
                 Text(
                     text = countryName,
